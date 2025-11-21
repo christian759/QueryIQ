@@ -147,8 +147,7 @@ def main():
             with st.spinner("Processing PDFs..."):
                 pdf_paths = save_uploaded_files(uploaded_files)
                 documents = extract_text_from_pdfs(pdf_paths)
-                # Use new default chunk size (250) defined in pdf_handler.py
-                chunks = chunk_text(documents)
+                chunks = chunk_text(documents, chunk_size=1000, overlap=100)
                 
                 model = get_embedding_model()
                 cross_encoder = get_cross_encoder()
