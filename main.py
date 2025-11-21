@@ -150,13 +150,11 @@ def main():
                 chunks = chunk_text(documents, chunk_size=1000, overlap=100)
                 
                 model = get_embedding_model()
-                cross_encoder = get_cross_encoder()
                 embeddings = embed_texts(chunks, model)
                 index = build_index(embeddings)
                 
                 st.session_state.chunks = chunks
                 st.session_state.model = model
-                st.session_state.cross_encoder = cross_encoder
                 st.session_state.index = index
                 st.session_state.processed = True
                 
@@ -194,13 +192,12 @@ def main():
         if "index" in st.session_state:
             with st.chat_message("assistant"):
                 with st.spinner("Thinking..."):
-                    # 1. Retrieve (with Re-Ranking)
+                    # 1. Retrieve
                     results = semantic_search(
                         prompt,
                         st.session_state.model,
                         st.session_state.index,
                         st.session_state.chunks,
-                        cross_encoder=st.session_state.get("cross_encoder"),
                         top_k=5
                     )
                     
