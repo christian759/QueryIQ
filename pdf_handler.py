@@ -91,33 +91,14 @@ def load_model():
     return model
 
 
-def load_cross_encoder():
-    """
-    Loads the Cross-Encoder model for re-ranking.
-    """
-    model_name = "cross-encoder/ms-marco-MiniLM-L-6-v2"
-    local_dir = os.path.expanduser("~/.cache/queryiq_models/ms-marco-MiniLM-L-6-v2")
-    
-    if not os.path.exists(local_dir):
-        print("⬇️  Downloading re-ranker model...")
-        model = CrossEncoder(model_name)
-        model.save(local_dir)
-        print(f"✅ Re-ranker cached at: {local_dir}")
-    else:
-        print(f"📦 Loading re-ranker from local cache: {local_dir}")
-        model = CrossEncoder(local_dir)
-    return model
-
-
 def load_local_llm():
     """
     Loads the local LaMini model for text generation.
     """
-    # Upgraded to 783M parameter model (3x larger)
-    model_id = "MBZUAI/LaMini-Flan-T5-783M"
-    local_dir = os.path.expanduser("~/.cache/queryiq_models/lamini-flan-t5-783m")
+    model_id = "MBZUAI/LaMini-Flan-T5-248M"
+    local_dir = os.path.expanduser("~/.cache/queryiq_models/lamini-flan-t5-248m")
     
-    print("⚙️ Loading Local LLM (LaMini-783M)...")
+    print("⚙️ Loading Local LLM (LaMini)...")
     # We rely on transformers caching, but we can specify a cache dir
     llm_pipeline = pipeline(
         "text2text-generation",
@@ -150,82 +131,48 @@ def embed_texts(chunks, model, batch_size=8, max_workers=4):
         for i in range(0, len(text_list), batch_size):
             batch = text_list[i : i + batch_size]
             futures.append(executor.submit(process_batch, batch))
-        for future in concurrent.futures.as_completed(futures):
-            embeddings.extend(future.result())
+        for f in concurrent.futures.as_completed(futures):
+            embeddings.extend(f.result())
 
     return np.array(embeddings, dtype="float32")
 
 
 # -------------------------------
-# 4. Vector Index & Search (Re-Ranking)
+# 4. Vector Index (hnswlib)
 # -------------------------------
 def build_index(embeddings):
-    """Builds an HNSW index for fast similarity search."""
+    """Builds a cosine similarity index for semantic search."""
     if len(embeddings) == 0:
         return None
         
     dim = embeddings.shape[1]
-    num_elements = embeddings.shape[0]
-
-    # HNSW Index
-    p = hnswlib.Index(space="cosine", dim=dim)
-    p.init_index(max_elements=num_elements, ef_construction=200, M=16)
-    p.add_items(embeddings)
-    p.set_ef(50)  # Query time accuracy
-    return p
-
-
-def semantic_search(query, model, index, chunks, cross_encoder=None, top_k=5):
-    """
-    Performs semantic search with optional Cross-Encoder re-ranking.
-    """
-    if index is None or not chunks:
-        return []
-
-    query_embedding = model.encode(query, convert_to_numpy=True)
-    
-    # 1. Retrieve more candidates if re-ranking (e.g., 20), else top_k
-    initial_k = 20 if cross_encoder else top_k
-    labels, distances = index.knn_query(query_embedding, k=min(initial_k, len(chunks)))
-    
-    indices = labels[0]
-    results = []
-    
-    # Collect initial candidates
-    for idx in indices:
-        results.append({"chunk": chunks[idx], "score": 0}) # Score placeholder
-        
-    # 2. Re-Rank with Cross-Encoder
-    if cross_encoder:
-        # Prepare pairs for cross-encoder: (query, document_text)
-        pairs = [[query, res["chunk"]["text"]] for res in results]
-        scores = cross_encoder.predict(pairs)
-        
-        # Attach scores
-        for i, res in enumerate(results):
-            res["score"] = scores[i]
-            
-        # Sort by new score (descending)
-        results = sorted(results, key=lambda x: x["score"], reverse=True)
-        
-        # Take top_k
-        results = results[:top_k]
-        
-    else: # If no re-ranker, use the scores from the initial retrieval
-        for j, idx in enumerate(indices):
-            # Update the score for the already collected chunk
-            # The initial results list was built in order of retrieval, so we can map
-            results[j]["score"] = float(distances[0][j])
-        # Sort by score (ascending for cosine distance, lower is better)
-        results = sorted(results, key=lambda x: x["score"])
-        results = results[:top_k] # Ensure only top_k are returned if initial_k was larger
-
-    return results
+    index = hnswlib.Index(space="cosine", dim=dim)
+    index.init_index(max_elements=len(embeddings), ef_construction=100, M=16)
+    index.add_items(embeddings)
+    index.set_ef(64)
+    return index
 
 
 # -------------------------------
 # 5. Search & Generation
 # -------------------------------
+def semantic_search(query, model, index, chunks, top_k=3):
+    """Performs semantic search on the indexed document."""
+    if index is None or not chunks:
+        return []
+        
+    query_emb = model.encode([query], convert_to_numpy=True)
+    labels, distances = index.knn_query(query_emb, k=min(top_k, len(chunks)))
+    
+    results = []
+    for j, i in enumerate(labels[0]):
+        results.append({
+            "chunk": chunks[i],
+            "score": float(distances[0][j])
+        })
+    return results
+
+
 def generate_answer_gemini(query, context_text, api_key):
     """Generates answer using Google Gemini."""
     try:
@@ -288,4 +235,3 @@ def generate_answer(query, context_results, model_type="high", api_key=None, loc
     
     else:
         return "⚠️ Invalid model type selected."
-
