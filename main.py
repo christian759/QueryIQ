@@ -74,14 +74,15 @@ def main():
         st.header("🤖 AI Configuration")
         
         # Model Selection
-        model_type = st.radio(
-            "Select Model Provider",
-            ["Google Gemini (Cloud)", "Base AI (Local)"],
-            index=0
+        model_option = st.radio(
+            "Model Power",
+            ["High (Cloud/Gemini)", "Low (Local/Offline)"],
+            index=0,
+            help="High: Uses Google Gemini (Requires API Key). Low: Uses local LaMini model (Offline, less accurate)."
         )
         
         api_key = None
-        if model_type == "Google Gemini (Cloud)":
+        if "High" in model_option:
             api_key = st.text_input("Google Gemini API Key", type="password", help="Get your key from AI Studio")
             if api_key:
                 st.session_state.api_key = api_key
@@ -105,14 +106,24 @@ def main():
         # Chat List
         chat_ids = list(st.session_state.chats.keys())
         if chat_ids:
-            selected_chat_title = st.selectbox(
+            # Reverse list to show newest first
+            chat_ids.reverse()
+            
+            # Find index of current chat in reversed list
+            try:
+                current_index = chat_ids.index(st.session_state.current_chat_id)
+            except ValueError:
+                current_index = 0
+                
+            selected_chat_id = st.selectbox(
                 "Switch Chat",
                 options=chat_ids,
                 format_func=lambda x: st.session_state.chats[x]["title"],
-                index=chat_ids.index(st.session_state.current_chat_id)
+                index=current_index
             )
-            if selected_chat_title != st.session_state.current_chat_id:
-                st.session_state.current_chat_id = selected_chat_title
+            
+            if selected_chat_id != st.session_state.current_chat_id:
+                st.session_state.current_chat_id = selected_chat_id
                 st.rerun()
 
         st.divider()
@@ -147,6 +158,10 @@ def main():
 
     # Chat Interface
     current_chat_id = st.session_state.current_chat_id
+    # Ensure current chat exists (persistence check)
+    if current_chat_id not in st.session_state.chats:
+        st.session_state.chats[current_chat_id] = {"title": "New Chat", "messages": []}
+        
     current_chat = st.session_state.chats[current_chat_id]
     
     # Display History
@@ -179,7 +194,7 @@ def main():
                     )
                     
                     # 2. Generate
-                    model_choice = "gemini" if "Gemini" in model_type else "local"
+                    model_choice = "high" if "High" in model_option else "low"
                     
                     answer = generate_answer(
                         prompt, 

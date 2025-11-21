@@ -198,16 +198,24 @@ Answer:"""
 def generate_answer_local(query, context_text, llm_pipeline):
     """Generates answer using local LaMini model."""
     try:
+        # Truncate context to avoid token limit (512 tokens ~ 2000 chars)
+        # We leave some room for the query and prompt structure
+        max_context_chars = 1500
+        if len(context_text) > max_context_chars:
+            context_text = context_text[:max_context_chars] + "..."
+            
         prompt = f"Answer the question based on the context below.\n\nContext: {context_text}\n\nQuestion: {query}\n\nAnswer:"
+        
         result = llm_pipeline(prompt)
         return result[0]['generated_text']
     except Exception as e:
         return f"❌ Error generating answer with Local AI: {str(e)}"
 
 
-def generate_answer(query, context_results, model_type="gemini", api_key=None, local_llm=None):
+def generate_answer(query, context_results, model_type="high", api_key=None, local_llm=None):
     """
     Router function to generate answer based on selected model.
+    model_type: "high" (Gemini) or "low" (Local)
     """
     # Construct Context Text
     context_text = "\n\n".join([
@@ -215,12 +223,12 @@ def generate_answer(query, context_results, model_type="gemini", api_key=None, l
         for r in context_results
     ])
 
-    if model_type == "gemini":
+    if model_type == "high":
         if not api_key:
             return "⚠️ API Key missing. Please provide a Google Gemini API key."
         return generate_answer_gemini(query, context_text, api_key)
     
-    elif model_type == "local":
+    elif model_type == "low":
         if not local_llm:
             return "⚠️ Local model not loaded."
         return generate_answer_local(query, context_text, local_llm)
