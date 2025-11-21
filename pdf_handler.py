@@ -43,7 +43,7 @@ def extract_text_from_pdfs(pdf_paths):
     return documents
 
 
-def chunk_text(documents, chunk_size=1000, overlap=200):
+def chunk_text(documents, chunk_size=250, overlap=50):
     """
     Splits text into overlapping chunks while preserving metadata.
     Input: List of dicts {'text': ..., 'source': ..., 'page': ...}
@@ -77,8 +77,8 @@ def load_model():
     """
     Loads the SentenceTransformer model for embeddings.
     """
-    model_name = "BAAI/bge-small-en-v1.5"
-    local_dir = os.path.expanduser("~/.cache/queryiq_models/bge-small-en-v1.5")
+    model_name = "BAAI/bge-base-en-v1.5"
+    local_dir = os.path.expanduser("~/.cache/queryiq_models/bge-base-en-v1.5")
 
     if not os.path.exists(local_dir):
         print("⬇️  Downloading embedding model (first time only)...")
