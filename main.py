@@ -51,6 +51,14 @@ def save_uploaded_files(uploaded_files):
             st.error(f"Error saving file {uploaded_file.name}: {e}")
     return saved_paths
 
+@st.cache_resource
+def get_embedding_model():
+    return load_model()
+
+@st.cache_resource
+def get_local_llm():
+    return load_local_llm()
+
 def init_session_state():
     """Initialize session state variables."""
     if "chats" not in st.session_state:
@@ -90,7 +98,7 @@ def main():
             # Lazy load local model
             if st.session_state.local_llm is None:
                 with st.spinner("⚙️ Loading Local AI Model (LaMini)... This happens once."):
-                    st.session_state.local_llm = load_local_llm()
+                    st.session_state.local_llm = get_local_llm()
             st.info("Using Local AI (LaMini-Flan-T5). No internet required.")
 
         st.divider()
@@ -141,7 +149,7 @@ def main():
                 documents = extract_text_from_pdfs(pdf_paths)
                 chunks = chunk_text(documents, chunk_size=1000, overlap=100)
                 
-                model = load_model()
+                model = get_embedding_model()
                 embeddings = embed_texts(chunks, model)
                 index = build_index(embeddings)
                 
